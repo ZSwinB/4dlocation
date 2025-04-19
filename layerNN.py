@@ -15,7 +15,7 @@ torch.manual_seed(42)
 np.random.seed(42)
 
 # 1. Read data
-file_path = r"D:\desktop\毕设材料\random.xlsx"
+file_path = r"D:\desktop\毕设材料\idealdata_label.xlsx"
 data = pd.read_excel(file_path)
 
 # Extract columns

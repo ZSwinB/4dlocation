@@ -8,7 +8,7 @@ from scipy.optimize import least_squares
 c = 299792458
 
 # Excel file path
-excel_path = r"D:\desktop\毕设材料\processed_data.xlsx"
+excel_path = r"D:\desktop\毕设材料\output_classifier.xlsx"
 
 # Receiver positions (x, y, z) - in meters
 receivers = np.array([
@@ -510,7 +510,7 @@ def main_analysis():
     filtered_df = pd.DataFrame(filtered_rows)
 
     # 保存为纯数据 Excel（无标题）
-    output_path = r"D:\desktop\毕设材料\filtered_result.xlsx"
+    output_path = r"D:\desktop\毕设材料\filtered_classifier.xlsx"
     filtered_df.to_excel(output_path, index=False, header=False)
     print(f"\n纯数据结果已保存至：{output_path}")
 
