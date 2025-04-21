@@ -3,12 +3,18 @@ import pandas as pd
 from itertools import combinations
 import matplotlib.pyplot as plt
 from scipy.optimize import least_squares
+import random
 #这个可以进行纯的物理一致性分析
 # Speed of light (m/s)
 c = 299792458
 
 # Excel file path
+
 excel_path = r"D:\desktop\毕设材料\output_classifier.xlsx"
+df = pd.read_excel(excel_path, header=None, engine='openpyxl')
+random.seed(42)
+sample_indices = random.sample(range(len(df)), 500)
+df = df.iloc[sample_indices].reset_index(drop=True)
 
 # Receiver positions (x, y, z) - in meters
 receivers = np.array([
@@ -23,7 +29,7 @@ receivers = np.array([
 # Reading Excel data - using precise method
 try:
     # Try using openpyxl engine to maintain precision
-    df = pd.read_excel(excel_path, header=None, engine='openpyxl')
+   # df = pd.read_excel(excel_path, header=None, engine='openpyxl')
     print("Original data shape:", df.shape)
     
     # View the first few rows of original data to check precision
@@ -185,8 +191,22 @@ def calculate_toas(emitter_pos, receiver_positions):
     toas = np.array(distances) / c
     return toas
 
+def label_to_center(label, region_size=120, base_height=80):
+    label -= 1  # 从0开始
+    row = label // 5
+    col = label % 5
+    center_x = (col + 0.5) * region_size
+    center_y = (row + 0.5) * region_size
+    
+    # 添加随机高度误差
+    height_error = np.random.uniform(0, 3)  # 0到3米的随机误差
+    height = base_height + height_error
+    
+    return np.array([center_x, center_y, height])
+
 # Estimate emitter position based on three receivers' TOA
-def estimate_position(toa_values, receiver_indices, receiver_positions):
+def estimate_position(toa_values, receiver_indices, receiver_positions, label=None):
+
     """
     Estimate emitter position using three receivers' TOA
     
@@ -198,23 +218,25 @@ def estimate_position(toa_values, receiver_indices, receiver_positions):
     Returns:
     Estimated emitter position
     """
-    # Select three receivers
+    # 选中三台接收机
     selected_receivers = np.array([receiver_positions[i] for i in receiver_indices])
     selected_toas = np.array([toa_values[i] for i in receiver_indices])
-    
-    # Initial guess (average of receiver positions)
-    initial_guess = np.mean(selected_receivers, axis=0)
-    
-    # Define residual function
+    #label=None
+    # 初始猜测
+    if label is not None and 1 <= label <= 25:
+        initial_guess = label_to_center(label)
+    else:
+        initial_guess = np.mean(selected_receivers, axis=0)
+
+    # 残差函数
     def residuals(pos):
         calculated_toas = calculate_toas(pos, selected_receivers)
         return calculated_toas - selected_toas
-    
-    # Solve using least squares
-    result = least_squares(residuals, initial_guess, method='lm')
-    
-    return result.x
 
+    # 最小二乘拟合
+    result = least_squares(residuals, initial_guess, method='lm',verbose=0)
+
+    return result.x
 # Calculate physical consistency score
 def calculate_consistency_score(estimated_position, toa_values, receiver_positions):
     """
@@ -276,7 +298,8 @@ def predict_lowest_reflection_receivers(row, receiver_positions):
     for combination in all_combinations:
         try:
             # Estimate emitter position
-            estimated_position = estimate_position(toa_values, combination, receiver_positions)
+            estimated_position = estimate_position(toa_values, combination, receiver_positions, label=int(row['label']))
+
             
             # Ensure estimated position is valid
             if np.any(np.isnan(estimated_position)) or np.any(np.isinf(estimated_position)):
@@ -302,6 +325,8 @@ def predict_lowest_reflection_receivers(row, receiver_positions):
     return best_combination
 
 # Main analysis process
+# 在main_analysis函数中添加得分评估部分
+
 def main_analysis():
     print("Starting analysis...")
     
@@ -322,6 +347,37 @@ def main_analysis():
     # For tracking reflection order sums
     all_true_reflection_sums = []
     all_predicted_reflection_sums = []
+    
+    # 得分评估新增变量
+    total_max_score = 0        # 总共最多能得的分数
+    total_actual_score = 0     # 总共实际得到的分数
+    original_avg_ray = 0       # 原始平均反射阶数
+    selected_avg_ray = 0       # 选择后平均反射阶数
+    
+    # 场景统计
+    scenarios = {
+        'siege': {
+            'count': 0,            # 样本数量
+            'max_score': 0,        # 最多能得的分数
+            'actual_score': 0,     # 实际得到的分数
+            'orig_ray': 0,         # 原始平均反射阶数
+            'sel_ray': 0           # 选择后平均反射阶数
+        },
+        'battle': {
+            'count': 0, 
+            'max_score': 0, 
+            'actual_score': 0, 
+            'orig_ray': 0, 
+            'sel_ray': 0
+        },
+        'counter_siege': {
+            'count': 0, 
+            'max_score': 0, 
+            'actual_score': 0, 
+            'orig_ray': 0, 
+            'sel_ray': 0
+        }
+    }
     
     # Process each row
     for index, row in df.iterrows():
@@ -353,6 +409,39 @@ def main_analysis():
             # Track reflection sums for statistics
             all_true_reflection_sums.append(true_sum)
             all_predicted_reflection_sums.append(predicted_sum)
+            
+            # 新增: 计算直射信号相关统计
+            direct_rays = [i for i, rt in enumerate(true_reflection_orders) if rt == 0]
+            selected_direct_rays = [r for r in predicted_indices if true_reflection_orders[r] == 0]
+            
+            # 场景分类和得分计算
+            direct_count = len(direct_rays)
+            selected_direct_count = len(selected_direct_rays)
+            
+            if direct_count >= 4:
+                scenario = 'siege'  # 围剿
+                max_score = 3       # 最多得3分
+            elif direct_count == 3:
+                scenario = 'battle'  # 苦战
+                max_score = 3       # 最多得3分
+            else:
+                scenario = 'counter_siege'  # 反围剿
+                max_score = direct_count  # 有多少个0就最多得多少分
+            
+            actual_score = selected_direct_count  # 选中几个直射信号就得几分
+            
+            # 更新全局统计
+            total_max_score += max_score
+            total_actual_score += actual_score
+            original_avg_ray += np.mean(true_reflection_orders)
+            selected_avg_ray += np.mean([true_reflection_orders[r] for r in predicted_indices])
+            
+            # 更新场景统计
+            scenarios[scenario]['count'] += 1
+            scenarios[scenario]['max_score'] += max_score
+            scenarios[scenario]['actual_score'] += actual_score
+            scenarios[scenario]['orig_ray'] += np.mean(true_reflection_orders)
+            scenarios[scenario]['sel_ray'] += np.mean([true_reflection_orders[r] for r in predicted_indices])
             
             # Calculate reflection order sum difference
             diff = abs(predicted_sum - true_sum)
@@ -429,6 +518,20 @@ def main_analysis():
     avg_true_reflection_sum = np.mean(all_true_reflection_sums) if all_true_reflection_sums else 0
     avg_predicted_reflection_sum = np.mean(all_predicted_reflection_sums) if all_predicted_reflection_sums else 0
     
+    # 新增: 计算最终得分统计
+    score_percentage = (total_actual_score / total_max_score * 100) if total_max_score > 0 else 0
+    original_avg_ray /= valid_rows
+    selected_avg_ray /= valid_rows
+    ray_improvement = original_avg_ray - selected_avg_ray
+    
+    # 计算场景统计
+    for scenario, stats in scenarios.items():
+        if stats['count'] > 0:
+            stats['score_percentage'] = (stats['actual_score'] / stats['max_score'] * 100) if stats['max_score'] > 0 else 0
+            stats['orig_ray'] /= stats['count']
+            stats['sel_ray'] /= stats['count']
+            stats['ray_improvement'] = stats['orig_ray'] - stats['sel_ray']
+    
     # Print results
     print(f"\nAnalysis complete! Total {total_rows} rows, successfully processed {valid_rows}, errors {errors_count}")
     
@@ -440,6 +543,41 @@ def main_analysis():
     print("\nReflection Order Sum Statistics:")
     print(f"Average true reflection order sum: {avg_true_reflection_sum:.4f}")
     print(f"Average predicted reflection order sum: {avg_predicted_reflection_sum:.4f}")
+    
+    # 新增: 打印得分评估结果
+    print("\n===== 得分评估结果 =====")
+    print(f"总行数: {valid_rows}")
+    print(f"总得分: {total_actual_score}/{total_max_score} ({score_percentage:.2f}%)")
+    print(f"原始平均反射阶数: {original_avg_ray:.2f}")
+    print(f"选择后平均反射阶数: {selected_avg_ray:.2f}")
+    print(f"阶数改善: {ray_improvement:.2f}")
+    
+    print("\n===== 场景分析 =====")
+    # 检查各场景样本数总和
+    total_scenario_count = sum(stats['count'] for stats in scenarios.values())
+    if total_scenario_count != valid_rows:
+        print(f"警告: 场景样本数总和 ({total_scenario_count}) 与总行数 ({valid_rows}) 不一致!")
+    
+    print("\n1. 围剿 (直射信号 >= 4)")
+    print(f"  样本数: {scenarios['siege']['count']}")
+    print(f"  得分: {scenarios['siege']['actual_score']}/{scenarios['siege']['max_score']} ({scenarios['siege']['score_percentage']:.2f}%)")
+    print(f"  原始平均反射阶数: {scenarios['siege']['orig_ray']:.2f}")
+    print(f"  选择后平均反射阶数: {scenarios['siege']['sel_ray']:.2f}")
+    print(f"  阶数改善: {scenarios['siege']['ray_improvement']:.2f}")
+    
+    print("\n2. 苦战 (直射信号 = 3)")
+    print(f"  样本数: {scenarios['battle']['count']}")
+    print(f"  得分: {scenarios['battle']['actual_score']}/{scenarios['battle']['max_score']} ({scenarios['battle']['score_percentage']:.2f}%)")
+    print(f"  原始平均反射阶数: {scenarios['battle']['orig_ray']:.2f}")
+    print(f"  选择后平均反射阶数: {scenarios['battle']['sel_ray']:.2f}")
+    print(f"  阶数改善: {scenarios['battle']['ray_improvement']:.2f}")
+    
+    print("\n3. 反围剿 (直射信号 <= 2)")
+    print(f"  样本数: {scenarios['counter_siege']['count']}")
+    print(f"  得分: {scenarios['counter_siege']['actual_score']}/{scenarios['counter_siege']['max_score']} ({scenarios['counter_siege']['score_percentage']:.2f}%)")
+    print(f"  原始平均反射阶数: {scenarios['counter_siege']['orig_ray']:.2f}")
+    print(f"  选择后平均反射阶数: {scenarios['counter_siege']['sel_ray']:.2f}")
+    print(f"  阶数改善: {scenarios['counter_siege']['ray_improvement']:.2f}")
     
     # Additional analysis: plot accuracy metrics
     plt.figure(figsize=(12, 7))
@@ -510,7 +648,7 @@ def main_analysis():
     filtered_df = pd.DataFrame(filtered_rows)
 
     # 保存为纯数据 Excel（无标题）
-    output_path = r"D:\desktop\毕设材料\filtered_classifier.xlsx"
+    output_path = r"D:\desktop\毕设材料\f_with_classifier.xlsx"
     filtered_df.to_excel(output_path, index=False, header=False)
     print(f"\n纯数据结果已保存至：{output_path}")
 
@@ -530,8 +668,25 @@ def main_analysis():
         for i, acc in receiver_accuracy:
             print(f"Receiver {i+1}: {acc:.4f}")
     
-    return exact_match_accuracy, off_by_one_or_exact, off_by_two_or_less, avg_true_reflection_sum
+    # 返回增强的结果集
+    return {
+        'exact_match': exact_match_accuracy,
+        'off_by_one': off_by_one_or_exact,
+        'off_by_two': off_by_two_or_less,
+        'avg_true_sum': avg_true_reflection_sum,
+        'score_percentage': score_percentage,
+        'ray_improvement': ray_improvement,
+        'scenarios': scenarios
+    }
 
 
 if __name__ == "__main__":
-    exact_match, off_by_one, off_by_two, avg_true_sum = main_analysis()
+    results = main_analysis()
+    
+    # 打印核心结果摘要
+    print("\n===== 结果摘要 =====")
+    print(f"得分百分比: {results['score_percentage']:.2f}%")
+    print(f"阶数改善: {results['ray_improvement']:.2f}")
+    print(f"'围剿'场景得分百分比: {results['scenarios']['siege']['score_percentage']:.2f}%")
+    print(f"'苦战'场景得分百分比: {results['scenarios']['battle']['score_percentage']:.2f}%")
+    print(f"'反围剿'场景得分百分比: {results['scenarios']['counter_siege']['score_percentage']:.2f}%")

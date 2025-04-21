@@ -1,9 +1,9 @@
 import pandas as pd
 
 # 路径
-original_path = r"D:\desktop\毕设材料\output_classifier.xlsx"
-filtered_path = r"D:\desktop\毕设材料\filtered_result.xlsx"
-output_path = r"D:\desktop\毕设材料\classifierdata4trainning.xlsx"
+original_path = r"D:\desktop\毕设材料\f_classifierwithcoordinate.xlsx"
+filtered_path = r"D:\desktop\毕设材料\classifierdata4trainning.xlsx"
+output_path = r"D:\desktop\毕设材料\f_classifierwithcoordinate.xlsx"
 
 # 读取两个文件（无表头）
 df_original = pd.read_excel(original_path, header=None)

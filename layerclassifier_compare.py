@@ -6,13 +6,16 @@ from sklearn.metrics import accuracy_score, confusion_matrix, classification_rep
 import matplotlib.pyplot as plt
 import seaborn as sns
 
-# 加载6个TOA的数据
+# 加载6个TOA的数据，指定header=None表示没有表头
 file_path_6toa = r"D:\desktop\毕设材料\processed_data.xlsx"
-data_6toa = pd.read_excel(file_path_6toa)
+data_6toa = pd.read_excel(file_path_6toa, header=None)
 
-# 加载3个TOA的数据
+# 加载3个TOA的数据，指定header=None表示没有表头
 file_path_3toa = r"D:\desktop\毕设材料\data4trainning.xlsx"
-data_3toa = pd.read_excel(file_path_3toa)
+data_3toa = pd.read_excel(file_path_3toa, header=None)
+
+# 确保不改变数值精度
+pd.set_option('display.float_format', lambda x: '{:.15f}'.format(x) if isinstance(x, float) else str(x))
 
 # 提取特征和标签 - 6个TOA
 X_6toa = data_6toa.iloc[:, 3:9].values  # 第4到9列作为特征

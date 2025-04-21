@@ -1,12 +1,19 @@
 import numpy as np
 import pandas as pd
-import pickle
-import matplotlib.pyplot as plt
-from sklearn.metrics import confusion_matrix
 from itertools import combinations
-
+from scipy.optimize import least_squares
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.model_selection import train_test_split
+import pickle
+import os
+import time
+import matplotlib.pyplot as plt
+#这个混合了机器学习，但是还有待观察。
 # Speed of light (m/s)
 c = 299792458
+
+# Excel file path - replace with your data file path
+excel_path = r"D:\desktop\毕设材料\processed_data.xlsx" 
 
 # Receiver positions (x, y, z) - in meters
 receivers = np.array([
@@ -18,6 +25,7 @@ receivers = np.array([
     [466, 70, 10],  # Receiver 6 position
 ])
 
+# Physical consistency function: calculate TOAs from emitter to all receivers
 def calculate_toas(emitter_pos, receiver_positions):
     """
     Calculate theoretical TOA values from emitter to all receivers
@@ -36,6 +44,7 @@ def calculate_toas(emitter_pos, receiver_positions):
     toas = np.array(distances) / c
     return toas
 
+# Estimate emitter position based on three receivers' TOA
 def estimate_position(toa_values, receiver_indices, receiver_positions):
     """
     Estimate emitter position using three receivers' TOA
@@ -54,14 +63,14 @@ def estimate_position(toa_values, receiver_indices, receiver_positions):
             return calculated_toas - selected_toas
         
         # Solve using least squares
-        from scipy.optimize import least_squares
         result = least_squares(residuals, initial_guess, method='lm')
         
         return result.x
-    except Exception:
+    except Exception as e:
         # Return None if estimation fails
         return None
 
+# Calculate physical consistency score
 def calculate_consistency_score(estimated_position, toa_values, receiver_positions):
     """
     Calculate physical consistency score for estimated position
@@ -74,6 +83,7 @@ def calculate_consistency_score(estimated_position, toa_values, receiver_positio
     except Exception:
         return -np.inf  # Return negative infinity as worst score
 
+# Extract features for machine learning model
 def extract_features(row, receiver_positions):
     """
     Extract features from TOA data for machine learning model
@@ -85,6 +95,7 @@ def extract_features(row, receiver_positions):
             float(row['TOA4']), float(row['TOA5']), float(row['TOA6'])
         ])
     except (TypeError, ValueError) as e:
+        # If can't convert to float, print error and return None
         print(f"Error extracting TOA values: {e}")
         return None
     
@@ -149,107 +160,237 @@ def extract_features(row, receiver_positions):
     
     return features
 
-def advanced_model_analysis(model, X_test, y_test, all_combinations, df):
+# Function to train the TOA model
+def train_toa_model(df, receiver_positions, test_size=0.2, model_path="toa_model.pkl"):
     """
-    Perform advanced analysis of model performance based on reflection order sum
+    Train a machine learning model to predict the lowest reflection order receivers
     
-    Args:
-        model: Trained RandomForestClassifier
-        X_test: Test features
-        y_test: True labels
-        all_combinations: List of receiver combinations
-        df: Original DataFrame with ray type information
+    Parameters:
+    df: DataFrame with TOA and ray type data
+    receiver_positions: Array of receiver positions
+    test_size: Proportion of data to use for testing
+    model_path: Where to save the trained model
     
     Returns:
-        Detailed performance metrics
+    Trained model and test data for evaluation
     """
-    # Predict on test set
-    y_pred = model.predict(X_test)
+    print("Starting model training process...")
+    start_time = time.time()
     
-    # Prepare lists to track performance
-    total_samples = len(y_test)
-    exact_matches = 0
-    near_matches_1 = 0  # Matches within ±1 reflection order sum
-    near_matches_2 = 0  # Matches within ±2 reflection order sum
+    # Check if data is valid
+    required_columns = ['TOA1', 'TOA2', 'TOA3', 'TOA4', 'TOA5', 'TOA6',
+                        'TOA1_ray_type', 'TOA2_ray_type', 'TOA3_ray_type', 
+                        'TOA4_ray_type', 'TOA5_ray_type', 'TOA6_ray_type']
     
-    # Lists to store sums for plotting
-    true_sums = []
-    pred_sums = []
+    missing_columns = [col for col in required_columns if col not in df.columns]
+    if missing_columns:
+        raise ValueError(f"Data is missing required columns: {missing_columns}")
     
-    # Iterate through test samples
-    for i in range(total_samples):
-        # Get true reflection orders for selected combination
-        true_reflection_orders = np.array([
-            int(df.iloc[i]['TOA1_ray_type']), 
-            int(df.iloc[i]['TOA2_ray_type']), 
-            int(df.iloc[i]['TOA3_ray_type']),
-            int(df.iloc[i]['TOA4_ray_type']), 
-            int(df.iloc[i]['TOA5_ray_type']), 
-            int(df.iloc[i]['TOA6_ray_type'])
-        ])
-        
-        # True combination
-        true_indices = all_combinations[y_test[i]]
-        true_sum = true_reflection_orders[list(true_indices)].sum()
-        
-        # Predicted combination
-        pred_indices = all_combinations[y_pred[i]]
-        pred_sum = true_reflection_orders[list(pred_indices)].sum()
-        
-        # Store sums for visualization
-        true_sums.append(true_sum)
-        pred_sums.append(pred_sum)
-        
-        # Check match types
-        if true_sum == pred_sum:
-            exact_matches += 1
-        elif abs(true_sum - pred_sum) <= 1:
-            near_matches_1 += 1
-        elif abs(true_sum - pred_sum) <= 2:
-            near_matches_2 += 1
+    # Prepare all possible combinations of 3 receivers
+    all_combinations = list(combinations(range(6), 3))
     
-    # Calculate percentages
-    exact_match_percentage = exact_matches / total_samples * 100
-    near_match_1_percentage = near_matches_1 / total_samples * 100
-    near_match_2_percentage = near_matches_2 / total_samples * 100
+    # Prepare data structures for training
+    features = []
+    labels = []
+    skipped_rows = 0
+    total_rows = len(df)
     
-    # Visualize true vs predicted reflection order sums
-    plt.figure(figsize=(12, 6))
-    scatter = plt.scatter(true_sums, pred_sums, alpha=0.5, 
-                c=np.abs(np.array(true_sums) - np.array(pred_sums)), 
-                cmap='viridis')
-    plt.colorbar(scatter, label='Absolute Difference in Reflection Order Sum')
-    plt.title('True vs Predicted Reflection Order Sums')
-    plt.xlabel('True Reflection Order Sum')
-    plt.ylabel('Predicted Reflection Order Sum')
+    print(f"Extracting features from {total_rows} data samples...")
     
-    # Add perfect match line
-    min_sum = min(min(true_sums), min(pred_sums))
-    max_sum = max(max(true_sums), max(pred_sums))
-    plt.plot([min_sum, max_sum], [min_sum, max_sum], 'r--', label='Perfect Match Line')
-    plt.legend()
-    plt.tight_layout()
-    plt.savefig('reflection_order_sums.png')
-    plt.close()
+    # Process each row in the dataset
+    for index, row in df.iterrows():
+        try:
+            # Skip rows with NaN values
+            if row[required_columns].isnull().any():
+                skipped_rows += 1
+                continue
+            
+            # Get true ray types (reflection orders)
+            true_reflection_orders = np.array([
+                int(row['TOA1_ray_type']), int(row['TOA2_ray_type']), int(row['TOA3_ray_type']),
+                int(row['TOA4_ray_type']), int(row['TOA5_ray_type']), int(row['TOA6_ray_type'])
+            ])
+            
+            # Get indices of 3 lowest reflection order receivers
+            true_indices = tuple(np.argsort(true_reflection_orders)[:3])
+            
+            # Find which combination matches the true lowest indices
+            true_combo_idx = None
+            for i, combo in enumerate(all_combinations):
+                if set(combo) == set(true_indices):
+                    true_combo_idx = i
+                    break
+            
+            if true_combo_idx is None:
+                skipped_rows += 1
+                continue
+            
+            # Extract features
+            row_features = extract_features(row, receiver_positions)
+            if row_features is None:
+                skipped_rows += 1
+                continue
+            
+            features.append(row_features)
+            labels.append(true_combo_idx)
+            
+            # Print progress periodically
+            if (index + 1) % 500 == 0 or index == 0 or index == total_rows - 1:
+                elapsed_time = time.time() - start_time
+                print(f"Processed {index + 1}/{total_rows} rows ({(index + 1)/total_rows*100:.1f}%) - Elapsed: {elapsed_time:.1f}s")
+            
+        except Exception as e:
+            print(f"Error processing row {index}: {e}")
+            skipped_rows += 1
+            continue
     
-    # Detailed performance print
-    print("\n### Advanced Model Performance Analysis ###")
-    print(f"Exact Match Percentage (Sum): {exact_match_percentage:.2f}%")
-    print(f"Near Match (±1 Sum): {near_match_1_percentage:.2f}%")
-    print(f"Near Match (±2 Sum): {near_match_2_percentage:.2f}%")
+    # Check if we have enough data to train
+    if len(features) < 100:
+        raise ValueError(f"Not enough valid data for training. Only {len(features)} valid samples found.")
     
-    return {
-        'exact_match_percentage': exact_match_percentage,
-        'near_match_1_percentage': near_match_1_percentage,
-        'near_match_2_percentage': near_match_2_percentage,
-        'true_sums': true_sums,
-        'pred_sums': pred_sums
-    }
+    print(f"Feature extraction complete. {len(features)} valid samples, {skipped_rows} skipped.")
+    
+    # Split into training and testing sets
+    X_train, X_test, y_train, y_test = train_test_split(
+        features, labels, test_size=test_size, random_state=42
+    )
+    
+    print(f"Training set: {len(X_train)} samples")
+    print(f"Testing set: {len(X_test)} samples")
+    
+    # Train the model
+    print("Training Random Forest model...")
+    model = RandomForestClassifier(
+        n_estimators=100,
+        max_depth=None,
+        min_samples_split=2,
+        min_samples_leaf=1,
+        n_jobs=-1,
+        random_state=42
+    )
+    
+    model.fit(X_train, y_train)
+    
+    # Save the model
+    with open(model_path, 'wb') as f:
+        pickle.dump(model, f)
+    print(f"Model saved to {model_path}")
+    
+    # Evaluate on test set
+    test_accuracy = model.score(X_test, y_test)
+    print(f"Test set accuracy: {test_accuracy:.4f}")
+    
+    # Return the model and test data for further evaluation
+    return model, X_test, y_test, all_combinations
 
-def modified_main():
+# Function to evaluate the model in more detail
+def evaluate_model(model, X_test, y_test, all_combinations, df, receiver_positions):
+    """
+    Perform detailed evaluation of the trained model
+    """
+    print("\nPerforming detailed model evaluation...")
+    
+    # Basic accuracy
+    y_pred = model.predict(X_test)
+    accuracy = sum(y_pred == y_test) / len(y_test)
+    print(f"Model accuracy: {accuracy:.4f}")
+    
+    # Feature importance
+    feature_importances = model.feature_importances_
+    
+    # Visualize feature importance (top 20)
+    num_features = len(feature_importances)
+    feature_names = []
+    
+    # Create feature names
+    # TOA values
+    for i in range(6):
+        feature_names.append(f"TOA{i+1}")
+    
+    # TOA differences
+    for i in range(6):
+        for j in range(i+1, 6):
+            feature_names.append(f"Diff_{i+1}_{j+1}")
+    
+    # Consistency scores
+    for i, combo in enumerate(all_combinations):
+        feature_names.append(f"Score_{'+'.join(map(str, combo))}")
+    
+    # Score ranks
+    for i, combo in enumerate(all_combinations):
+        feature_names.append(f"Rank_{'+'.join(map(str, combo))}")
+    
+    # Normalized scores
+    for i, combo in enumerate(all_combinations):
+        feature_names.append(f"Norm_{'+'.join(map(str, combo))}")
+    
+    # Score differences
+    for i, combo in enumerate(all_combinations):
+        feature_names.append(f"ScoreDiff_{'+'.join(map(str, combo))}")
+    
+    # If we have more features than names, add generic names
+    while len(feature_names) < num_features:
+        feature_names.append(f"Feature_{len(feature_names)}")
+    
+    # If we have more names than features, truncate
+    feature_names = feature_names[:num_features]
+    
+    # Sort features by importance
+    indices = np.argsort(feature_importances)[::-1]
+    
+    # Plot top 20 features
+    plt.figure(figsize=(12, 8))
+    plt.title("Feature Importances")
+    plt.bar(range(20), feature_importances[indices[:20]], align="center")
+    plt.xticks(range(20), [feature_names[i] for i in indices[:20]], rotation=90)
+    plt.tight_layout()
+    plt.savefig("feature_importances.png")
+    print("Feature importance plot saved to feature_importances.png")
+    
+    # Compare with pure physical consistency method
+    print("\nComparing with pure physical consistency method...")
+    
+    # Get a subset of test data
+    test_indices = np.random.choice(len(y_test), min(100, len(y_test)), replace=False)
+    
+    correct_ml = 0
+    correct_phys = 0
+    
+    for idx in test_indices:
+        test_features = X_test[idx]
+        true_label = y_test[idx]
+        
+        # ML prediction
+        ml_pred = model.predict([test_features])[0]
+        
+        # Extract consistency scores from features
+        num_toa = 6
+        num_diffs = num_toa * (num_toa - 1) // 2
+        start_idx = num_toa + num_diffs
+        end_idx = start_idx + len(all_combinations)
+        consistency_scores = test_features[start_idx:end_idx]
+        
+        # Physical consistency prediction
+        phys_pred = np.argmax(consistency_scores)
+        
+        # Check correctness
+        if ml_pred == true_label:
+            correct_ml += 1
+        if phys_pred == true_label:
+            correct_phys += 1
+    
+    print(f"ML model accuracy on sample: {correct_ml/len(test_indices):.4f}")
+    print(f"Physical method accuracy on sample: {correct_phys/len(test_indices):.4f}")
+    
+    if correct_phys > 0:
+        print(f"Relative improvement: {(correct_ml-correct_phys)/correct_phys*100:.2f}%")
+    
+    return accuracy
+
+# Main function to run the training process
+def main():
     try:
         # Read the data
-        excel_path = r"D:\desktop\毕设材料\processed_data.xlsx"
         print(f"Reading data from {excel_path}...")
         df = pd.read_excel(excel_path, header=None, engine='openpyxl')
         
@@ -284,62 +425,20 @@ def modified_main():
         print(f"Data shape: {df.shape}")
         print(f"Missing values: {df[numeric_cols + reflection_cols].isnull().sum().sum()}")
         
-        # Load the pre-trained model
-        with open("toa_model.pkl", 'rb') as f:
-            model = pickle.load(f)
+        # Train the model
+        model, X_test, y_test, all_combinations = train_toa_model(
+            df, receivers, test_size=0.2, model_path="toa_model.pkl"
+        )
         
-        # Prepare test data
-        features = []
-        labels = []
+        # Evaluate the model
+        evaluate_model(model, X_test, y_test, all_combinations, df, receivers)
         
-        # All possible 3-receiver combinations
-        all_combinations = list(combinations(range(6), 3))
-        
-        # Feature extraction (similar to training process)
-        for index, row in df.iterrows():
-            try:
-                # Get true ray types (reflection orders)
-                true_reflection_orders = np.array([
-                    int(row['TOA1_ray_type']), int(row['TOA2_ray_type']), int(row['TOA3_ray_type']),
-                    int(row['TOA4_ray_type']), int(row['TOA5_ray_type']), int(row['TOA6_ray_type'])
-                ])
-                
-                # Get indices of 3 lowest reflection order receivers
-                true_indices = tuple(np.argsort(true_reflection_orders)[:3])
-                
-                # Find which combination matches the true lowest indices
-                true_combo_idx = None
-                for i, combo in enumerate(all_combinations):
-                    if set(combo) == set(true_indices):
-                        true_combo_idx = i
-                        break
-                
-                if true_combo_idx is None:
-                    continue
-                
-                # Extract features
-                row_features = extract_features(row, receivers)
-                if row_features is None:
-                    continue
-                
-                features.append(row_features)
-                labels.append(true_combo_idx)
-            
-            except Exception as e:
-                print(f"Error processing row: {e}")
-                continue
-        
-        # Convert to numpy arrays
-        X_test = np.array(features)
-        y_test = np.array(labels)
-        
-        # Run advanced analysis
-        performance_metrics = advanced_model_analysis(model, X_test, y_test, all_combinations, df)
+        print("\nTraining and evaluation complete!")
         
     except Exception as e:
-        print(f"An error occurred: {e}")
+        print(f"An error occurred during training: {e}")
         import traceback
         traceback.print_exc()
 
 if __name__ == "__main__":
-    modified_main()
+    main()

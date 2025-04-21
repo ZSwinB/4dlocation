@@ -15,7 +15,7 @@ torch.manual_seed(42)
 np.random.seed(42)
 
 # 1. Read data
-file_path = r"D:\desktop\毕设材料\idealdata_label.xlsx"
+file_path = r"D:\desktop\毕设材料\f_classifierwithcoordinate.xlsx"
 data = pd.read_excel(file_path)
 
 # Extract columns
@@ -84,23 +84,26 @@ class LocationPredictor(nn.Module):
     def __init__(self, input_size):
         super(LocationPredictor, self).__init__()
         # 增加网络深度和宽度
-        self.fc1 = nn.Linear(input_size, 256)
-        self.fc2 = nn.Linear(256, 256)
-        self.fc3 = nn.Linear(256, 128)
+        self.fc1 = nn.Linear(input_size, 128)
+        self.fc2 = nn.Linear(128, 64)
+        self.fc3 = nn.Linear(64, 32)
+        '''
         self.fc4 = nn.Linear(128, 128)
         self.fc5 = nn.Linear(128, 64)
         self.fc6 = nn.Linear(64, 32)
-        self.fc7 = nn.Linear(32, 2)  # 输出 x,y 坐标
+        '''
+        self.fc4 = nn.Linear(32, 2)  # 输出 x,y 坐标
         
         # 添加批归一化层
-        self.bn1 = nn.BatchNorm1d(256)
-        self.bn2 = nn.BatchNorm1d(256)
-        self.bn3 = nn.BatchNorm1d(128)
-        self.bn4 = nn.BatchNorm1d(128)
-        self.bn5 = nn.BatchNorm1d(64)
+        self.bn1 = nn.BatchNorm1d(128)
+        self.bn2 = nn.BatchNorm1d(64)
+        self.bn3 = nn.BatchNorm1d(32)
+    
+        #self.bn4 = nn.BatchNorm1d(128)
+       # self.bn5 = nn.BatchNorm1d(64)
         
         # 添加Dropout层防止过拟合
-        self.dropout = nn.Dropout(0.3)
+        self.dropout = nn.Dropout(0.2)
         
         # 使用不同的激活函数
         self.relu = nn.ReLU()
@@ -113,13 +116,13 @@ class LocationPredictor(nn.Module):
         x = self.dropout(x)
         
         # 第二层：LeakyReLU激活
-        x = self.leaky_relu(self.bn2(self.fc2(x)))
+        x = self.relu(self.bn2(self.fc2(x)))
         x = self.dropout(x)
-        
+       
         # 第三层：ELU激活
-        x = self.elu(self.bn3(self.fc3(x)))
+        x = self.relu(self.bn3(self.fc3(x)))
         x = self.dropout(x)
-        
+        '''
         # 第四层：ReLU激活
         x = self.relu(self.bn4(self.fc4(x)))
         
@@ -128,9 +131,9 @@ class LocationPredictor(nn.Module):
         
         # 第六层：ReLU激活
         x = self.relu(self.fc6(x))
-        
+        '''
         # 输出层：无激活函数（回归问题）
-        x = self.fc7(x)
+        x = self.fc4(x)
         
         return x
 
@@ -425,6 +428,17 @@ def load_model_and_predict(model_path, new_toa_data, new_area_labels):
         predictions = loaded_model(new_X_tensor)
     
     return predictions.numpy()
+
+print(f"测试集平均欧氏距离: {mean_euclidean_error:.2f} 米")
+
+# 计算不同阈值下的百分比
+under_5m = np.mean(euclidean_error < 5) * 100
+under_10m = np.mean(euclidean_error < 10) * 100
+under_20m = np.mean(euclidean_error < 20) * 100
+
+print(f"欧氏距离 < 5米: {under_5m:.2f}%")
+print(f"欧氏距离 < 10米: {under_10m:.2f}%")
+print(f"欧氏距离 < 20米: {under_20m:.2f}%")
 
 # Example: How to use the loaded model for prediction
 # (For reference only, not actually executed)
