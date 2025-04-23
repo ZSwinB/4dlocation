@@ -19,7 +19,7 @@ np.random.seed(42)
 tf.random.set_seed(42)
 
 # Data file path
-filtered_data_path = "D:/desktop/毕设材料/randomwithcoordinate.xlsx"
+filtered_data_path = r"D:\desktop\毕设材料\500M\fingerprint6_500MHz_coordinate.xlsx"
 
 # Receiver positions - same as in the filtering code
 receivers = np.array([
@@ -54,7 +54,7 @@ def label_to_center(label, region_size=120, base_height=80):
     center_y = (row + 0.5) * region_size
     
     # 添加随机高度误差
-    height_error = np.random.uniform(0, 3)  # 0到3米的随机误差
+    height_error = np.random.uniform(0, 0.5)  # 0到3米的随机误差
     height = base_height + height_error
     
     return np.array([center_x, center_y, height])
@@ -63,7 +63,7 @@ def estimate_position(toa_values, receiver_indices, receiver_positions, label=No
     """Estimate emitter position using three receivers' TOA"""
     selected_receivers = np.array([receiver_positions[i-1] for i in receiver_indices])  # Receiver IDs are 1-6
     selected_toas = np.array(toa_values)
-    
+    #label=None
     # 使用标签中心作为初始猜测
     if label is not None and 1 <= label <= 25:
         initial_guess = label_to_center(label)
@@ -214,6 +214,9 @@ model = Sequential([
     BatchNormalization(),
     Dropout(0.3),
 
+ 
+
+
 
     Dense(256),
     LeakyReLU(alpha=0.1),
@@ -313,7 +316,7 @@ callbacks = [early_stopping, reduce_lr]
 print("\nTraining the model with early stopping and learning rate reduction...")
 history = model.fit(
     X_train_scaled, y_train,
-    epochs=300,  # Maximum epochs (early stopping will likely trigger before this)
+    epochs=500,  # Maximum epochs (early stopping will likely trigger before this)
     batch_size=32,
     validation_split=0.2,
     callbacks=callbacks,

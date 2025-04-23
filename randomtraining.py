@@ -5,8 +5,8 @@ import random
 random.seed(42)
 
 # === 路径设置 ===
-original_path = r"D:\desktop\毕设材料\processed_data.xlsx"  # 原始数据路径
-output_path = r"D:\desktop\毕设材料\randomwithcoordinate.xlsx"    # 输出路径
+original_path = r"D:\desktop\毕设材料\6\classifier_noisy.xlsx"  # 原始数据路径
+output_path = r"D:\desktop\毕设材料\6\random_noisy.xlsx"    # 输出路径
 
 # === 读取文件 ===
 df_original = pd.read_excel(original_path, header=None)  # 不读取列标签

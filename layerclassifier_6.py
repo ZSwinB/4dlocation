@@ -11,7 +11,7 @@ pd.set_option('display.float_format', lambda x: '{:.15f}'.format(x) if isinstanc
 np.set_printoptions(precision=15, suppress=True)
 
 # 加载数据，指定header=None表示没有表头
-file_path = r"D:\desktop\毕设材料\processed_data.xlsx"
+file_path = r"D:\desktop\毕设材料\6\fingerprint6_noisy.xlsx"
 data = pd.read_excel(file_path, header=None)
 
 # 查看数据前几行，了解数据结构
@@ -84,7 +84,7 @@ new_data = data.copy()
 new_data.iloc[:, 2] = y_pred_all
 
 # 保存到新的Excel文件
-output_path = r"D:\desktop\毕设材料\output_classifier.xlsx"
+output_path = r"D:\desktop\毕设材料\6\classifier_noisy.xlsx"
 new_data.to_excel(output_path, index=False, header=False)
 
 print(f"\n已将无泄漏预测结果保存到: {output_path}")

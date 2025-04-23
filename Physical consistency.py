@@ -10,11 +10,12 @@ c = 299792458
 
 # Excel file path
 
-excel_path = r"D:\desktop\毕设材料\output_classifier.xlsx"
+excel_path = r"D:\desktop\毕设材料\500M\fingerprint6_500MHz.xlsx"
 df = pd.read_excel(excel_path, header=None, engine='openpyxl')
-random.seed(42)
-sample_indices = random.sample(range(len(df)), 500)
-df = df.iloc[sample_indices].reset_index(drop=True)
+
+# random.seed(42)
+# sample_indices = random.sample(range(len(df)), 20)
+# df = df.iloc[sample_indices].reset_index(drop=True)
 
 # Receiver positions (x, y, z) - in meters
 receivers = np.array([
@@ -221,7 +222,7 @@ def estimate_position(toa_values, receiver_indices, receiver_positions, label=No
     # 选中三台接收机
     selected_receivers = np.array([receiver_positions[i] for i in receiver_indices])
     selected_toas = np.array([toa_values[i] for i in receiver_indices])
-    #label=None
+    label=None
     # 初始猜测
     if label is not None and 1 <= label <= 25:
         initial_guess = label_to_center(label)
@@ -633,14 +634,22 @@ def main_analysis():
             continue
         selected_indices = predictions[idx]
 
-        # 提取三个 TOA 和三个 ray_type，按要求拼接
-        data_row = []
+        # 提取原始数据的前三列（x, y, label）
+        data_row = [row['x'], row['y'], row['label']]
+        
+        # 提取三个 TOA 值
         for sel_idx in selected_indices:
             toa_col = f'TOA{sel_idx+1}'
             data_row.append(row[toa_col])
+        
+        # 提取三个 ray_type 值
         for sel_idx in selected_indices:
             ray_type_col = f'TOA{sel_idx+1}_ray_type'
             data_row.append(row[ray_type_col])
+        
+        # 添加选中的TOA编号（从1开始）
+        for sel_idx in selected_indices:
+            data_row.append(sel_idx + 1)  # 加1是因为TOA编号从1开始
 
         filtered_rows.append(data_row)
 
@@ -648,7 +657,7 @@ def main_analysis():
     filtered_df = pd.DataFrame(filtered_rows)
 
     # 保存为纯数据 Excel（无标题）
-    output_path = r"D:\desktop\毕设材料\f_with_classifier.xlsx"
+    output_path = r"D:\desktop\毕设材料\500M\fingerprint6_500MHz_filtered.xlsx"
     filtered_df.to_excel(output_path, index=False, header=False)
     print(f"\n纯数据结果已保存至：{output_path}")
 

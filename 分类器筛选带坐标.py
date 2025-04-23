@@ -8,7 +8,7 @@ from scipy.optimize import least_squares
 c = 299792458
 
 # Excel file path
-excel_path = r"D:\desktop\毕设材料\output_classifier.xlsx"
+excel_path = r"D:\desktop\毕设材料\500M\fingerprint6_500MHz.xlsx"
 
 # Receiver positions (x, y, z) - in meters
 receivers = np.array([
@@ -188,7 +188,7 @@ def predict_lowest_reflection_receivers(row, receiver_positions):
 
     for combination in combinations(range(6), 3):
         try:
-            est_pos = estimate_position(toa_values, combination, receiver_positions, label=label, debug=True)
+            est_pos = estimate_position(toa_values, combination, receiver_positions, label=label, debug=False)
 
 
             if np.any(np.isnan(est_pos)) or np.any(np.isinf(est_pos)):
@@ -271,6 +271,11 @@ def main_analysis_expanded():
         # 创建数据行
         data_row = []
         
+
+                # 10-11. 添加真实发射机位置（用于训练残差学习模型）
+        data_row.append(row['x'])
+        data_row.append(row['y'])
+        
         # 1-3. 添加三个选定的TOA值
         for sel_idx in selected_indices:
             toa_col = f'TOA{sel_idx+1}'
@@ -285,9 +290,7 @@ def main_analysis_expanded():
         for sel_idx in selected_indices:
             data_row.append(sel_idx + 1)  # 添加接收机编号（1-6）
         
-        # 10-11. 添加真实发射机位置（用于训练残差学习模型）
-        data_row.append(row['x'])
-        data_row.append(row['y'])
+
         
         # 12-14. 添加估计的发射机位置（物理模型预测）
         if idx < len(all_positions_estimations):
@@ -313,7 +316,7 @@ def main_analysis_expanded():
 
     
     # 保存纯数据结果（无列名，兼容原有格式）
-    output_path = r"D:\desktop\毕设材料\f_label_coordinate.xlsx"
+    output_path = r"D:\desktop\毕设材料\500M\fingerprint6_500MHz_coordinate.xlsx"
     filtered_df.to_excel(output_path, index=False, header=False)
     print(f"\n纯数据结果已保存至：{output_path}")
     
@@ -409,7 +412,7 @@ def debug_single_row_combinations_with_viz(row_index, df, receiver_positions, ra
             
             # Print original optimization trajectory (for debugging)
             print(f"\n[Combo {combination}]")
-            original_est = estimate_position(toa_values, combination, receiver_positions, label=label, debug=True)
+            original_est = estimate_position(toa_values, combination, receiver_positions, label=label, debug=False)
             print(f"Original estimate_position returned: x={original_est[0]:.2f}, y={original_est[1]:.2f}, z={original_est[2]:.2f}")
             print(f"Modified return: x={est_pos[0]:.2f}, y={est_pos[1]:.2f}, z={est_pos[2]:.2f}")
 
@@ -815,8 +818,8 @@ def debug_single_row_combinations_with_viz(row_index, df, receiver_positions, ra
 
 
 if __name__ == "__main__":
-    #result_df = main_analysis_expanded()
-    results = debug_single_row_combinations_with_viz(2860, df, receivers, range_limit=1000, highlight_receiver=3) #用于调试单行数据
+    result_df = main_analysis_expanded()
+    #results = debug_single_row_combinations_with_viz(2860, df, receivers, range_limit=1000, highlight_receiver=3) #用于调试单行数据
 
     print("\n处理完成！结果数据前5行：")
     #print(result_df.head())

@@ -2,8 +2,8 @@ import pandas as pd
 import random
 
 # === 路径设置 ===
-original_path = r"D:\desktop\毕设材料\processed_data.xlsx"  # 原始数据路径
-output_path = r"D:\desktop\毕设材料\idealcoordinate.xlsx"    # 输出路径
+original_path = r"D:\desktop\毕设材料\7\output_classifier7.xlsx"  # 原始数据路径
+output_path = r"D:\desktop\毕设材料\7\idealcoordinate7.xlsx"    # 输出路径
 #这个代码又能生成最好的，也能生成最坏的。
 # === 读取文件 ===
 df_original = pd.read_excel(original_path, header=None)  # 不读取列标签
@@ -17,7 +17,7 @@ for idx, row in df_original.iterrows():
     selected_row = row[:3].tolist()
     
     # 选取第10到第15列（索引9到14）
-    raytypes_10_to_15 = row[9:15].tolist()
+    raytypes_10_to_15 = row[10:17].tolist()
     
     # 找到最小的三个值及其对应的索引位置（考虑重复值）
     # 创建(值, 原始索引)的元组列表
